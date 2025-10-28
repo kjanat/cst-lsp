@@ -1,7 +1,7 @@
 import difflib
-
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import libcst
 from libcst.metadata import CodePosition, CodeRange
 from lsprotocol import types as lsp

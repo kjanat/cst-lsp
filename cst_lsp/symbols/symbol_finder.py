@@ -1,11 +1,11 @@
+import functools
+import json
+import re
+import subprocess
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-import functools
-import subprocess
-import json
-import re
 
 IMPORT_PATTERN = re.compile(r"import\s+(\w+)(?:\s+as\s+(\w+))?")
 

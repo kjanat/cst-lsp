@@ -1,14 +1,15 @@
-from collections import defaultdict
 import itertools
+from collections import defaultdict
+
 import libcst as cst
-from libcst.metadata import CodeRange, PositionProvider, ScopeProvider, MetadataWrapper
-from lsprotocol import types as lsp_types
+from libcst.codemod import CodemodContext
 from libcst.codemod.visitors import AddImportsVisitor
+from libcst.metadata import CodeRange, MetadataWrapper, PositionProvider, ScopeProvider
+from lsprotocol import types as lsp_types
 
 from cst_lsp.symbols.symbol_finder import SymbolFinder
-from .base import BaseCstLspCodeAction, code_ranges_interect
 
-from libcst.codemod import CodemodContext
+from .base import BaseCstLspCodeAction, code_ranges_interect
 
 
 class NameAtLocationVisitor(cst.CSTVisitor):
