@@ -26,7 +26,7 @@ class SymbolFinder(ABC):
     def find_symbol(self, symbol: str) -> list[SuggestedImport]:
         pass
 
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def paths(self) -> list[Path]:
         result = subprocess.run(
             [str(self.python_path), "-c", r'import sys; print("\n".join(sys.path))'],
@@ -96,7 +96,7 @@ class RipGrepSymbolFinder(SymbolFinder):
                 except json.JSONDecodeError:
                     continue
 
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def find_existing_imports(self, symbol: str) -> list[SuggestedImport]:
         """
         Find existing imports of the given symbol in the project.
@@ -135,7 +135,7 @@ class RipGrepSymbolFinder(SymbolFinder):
         sorted_imports = sorted(counter.items(), key=lambda x: x[1], reverse=True)
         return [item[0] for item in sorted_imports]
 
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def find_symbol_from_all(self, symbol: str) -> list[SuggestedImport]:
         """
         Search for the given symbol in __all__ declarations within __init__.py files.
@@ -160,7 +160,7 @@ class RipGrepSymbolFinder(SymbolFinder):
             use_parent=True,
         )
 
-    @functools.lru_cache(maxsize=None)
+    @functools.cache
     def find_top_level_symbol(self, symbol: str) -> list[SuggestedImport]:
         """
         Search for top-level class or function definitions of the given symbol.
