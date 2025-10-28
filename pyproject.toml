@@ -24,6 +24,7 @@ cst_lsp = "cst_lsp.server:main"
 dev = [
   "pyright>=1.1.407",
   "pytest>=8.4.2",
+  "pytest-cov>=7.0.0",
   "ruff>=0.14.2",
 ]
 
