@@ -1,4 +1,3 @@
-import functools
 import json
 import re
 import subprocess
@@ -17,24 +16,32 @@ class SuggestedImport:
     alias: str | None
 
 
-@dataclass(frozen=True)
+@dataclass
 class SymbolFinder(ABC):
     python_path: Path
     root: Path
+    _paths_cache: list[Path] | None = None
 
     @abstractmethod
     def find_symbol(self, symbol: str) -> list[SuggestedImport]:
         pass
 
-    @functools.cache
     def paths(self) -> list[Path]:
-        result = subprocess.run(
-            [str(self.python_path), "-c", r'import sys; print("\n".join(sys.path))'],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return [Path(x) for x in result.stdout.splitlines() if x.strip()]
+        if self._paths_cache is None:
+            result = subprocess.run(
+                [
+                    str(self.python_path),
+                    "-c",
+                    r'import sys; print("\n".join(sys.path))',
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self._paths_cache = [
+                Path(x) for x in result.stdout.splitlines() if x.strip()
+            ]
+        return self._paths_cache
 
     @classmethod
     def create(cls, python_path: Path, root: Path) -> "SymbolFinder | None":
@@ -45,6 +52,7 @@ class SymbolFinder(ABC):
             return None
 
 
+@dataclass
 class RipGrepSymbolFinder(SymbolFinder):
     """
     A symbol finder that uses ripgrep to search for symbols in Python files.
@@ -54,6 +62,11 @@ class RipGrepSymbolFinder(SymbolFinder):
     search for existing imports, symbols in __all__ declarations, and
     top-level class or function definitions.
     """
+
+    def __post_init__(self):
+        self._import_cache: dict[str, list[SuggestedImport]] = {}
+        self._all_cache: dict[str, list[SuggestedImport]] = {}
+        self._top_level_cache: dict[str, list[SuggestedImport]] = {}
 
     def _ripgrep_generator(
         self, pattern: str, root: Path, glob: str = "*.py", max_hits: int = 25
@@ -96,7 +109,6 @@ class RipGrepSymbolFinder(SymbolFinder):
                 except json.JSONDecodeError:
                     continue
 
-    @functools.cache
     def find_existing_imports(self, symbol: str) -> list[SuggestedImport]:
         """
         Find existing imports of the given symbol in the project.
@@ -114,6 +126,9 @@ class RipGrepSymbolFinder(SymbolFinder):
                 - The alias of the symbol (if an alias is used)
             The list is sorted by frequency of occurrence, with the most common imports first.
         """
+        if symbol in self._import_cache:
+            return self._import_cache[symbol]
+
         pattern = rf"import\s+(?:\(\s*(?:\w+,\s*)*)?(?:(?:\w+\s+as\s+))?{symbol}(?:,|\s+|\)|$)"
         imports = []
         for _, line in self._ripgrep_generator(pattern, self.root):
@@ -133,9 +148,10 @@ class RipGrepSymbolFinder(SymbolFinder):
                 )
         counter = Counter(imports)
         sorted_imports = sorted(counter.items(), key=lambda x: x[1], reverse=True)
-        return [item[0] for item in sorted_imports]
+        result = [item[0] for item in sorted_imports]
+        self._import_cache[symbol] = result
+        return result
 
-    @functools.cache
     def find_symbol_from_all(self, symbol: str) -> list[SuggestedImport]:
         """
         Search for the given symbol in __all__ declarations within __init__.py files.
@@ -153,14 +169,18 @@ class RipGrepSymbolFinder(SymbolFinder):
                 - The symbol itself
                 - None (as no alias is used in __all__ declarations)
         """
-        return self._find_pattern_in_files(
+        if symbol in self._all_cache:
+            return self._all_cache[symbol]
+
+        result = self._find_pattern_in_files(
             symbol,
             f"__all__\\s*=\\s*(?:\\(|\\[)(?s:.)*[\"']{symbol}[\"']",
             glob="__init__.py",
             use_parent=True,
         )
+        self._all_cache[symbol] = result
+        return result
 
-    @functools.cache
     def find_top_level_symbol(self, symbol: str) -> list[SuggestedImport]:
         """
         Search for top-level class or function definitions of the given symbol.
@@ -177,7 +197,14 @@ class RipGrepSymbolFinder(SymbolFinder):
                 - The symbol itself
                 - None (as no alias is used in top-level definitions)
         """
-        return self._find_pattern_in_files(symbol, rf"(?:class|def)\s+{symbol}(?:\(|:)")
+        if symbol in self._top_level_cache:
+            return self._top_level_cache[symbol]
+
+        result = self._find_pattern_in_files(
+            symbol, rf"(?:class|def)\s+{symbol}(?:\(|:)"
+        )
+        self._top_level_cache[symbol] = result
+        return result
 
     def _find_pattern_in_files(
         self, symbol: str, pattern: str, glob: str = "*.py", use_parent: bool = False
