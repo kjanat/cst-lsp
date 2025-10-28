@@ -1,9 +1,7 @@
-from libcst.metadata import CodeRange, CodePosition
+import pytest
+from libcst.metadata import CodePosition, CodeRange
 
 from cst_lsp.code_actions.base import code_ranges_interect
-
-
-import pytest
 
 
 @pytest.mark.parametrize(

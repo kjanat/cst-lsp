@@ -2,6 +2,7 @@ import textwrap
 
 import libcst as cst
 from libcst.metadata import CodeRange
+
 from cst_lsp.code_actions.extract_method import (
     ExtractMethodConfig,
     FunctionExtractor,

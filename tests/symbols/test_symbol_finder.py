@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
+
 import pytest
+
 from cst_lsp.symbols.symbol_finder import RipGrepSymbolFinder, SuggestedImport
 
 
