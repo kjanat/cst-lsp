@@ -92,9 +92,9 @@ class RipGrepSymbolFinder(SymbolFinder):
             if not process.stdout:
                 return
             hits = 0
-            for line in process.stdout:
+            for json_line in process.stdout:
                 try:
-                    data = json.loads(line)
+                    data = json.loads(json_line)
                     if (
                         "data" in data
                         and "lines" in data["data"]

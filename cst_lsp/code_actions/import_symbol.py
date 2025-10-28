@@ -87,6 +87,7 @@ class ImportSymbol(BaseCstLspCodeAction):
             suggested_import.symbol,
             suggested_import.alias,
         )
+        return None
 
     def refactor(
         self,
