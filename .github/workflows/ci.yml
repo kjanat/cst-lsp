@@ -17,33 +17,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 1 }
 
       - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          uv venv .venv
-          echo "VIRTUAL_ENV=.venv" >> $GITHUB_ENV
-          echo "$PWD/.venv/bin" >> $GITHUB_PATH
+        uses: astral-sh/setup-uv@v6
 
-      - name: Install Ripgrep
-        run: sudo apt-get install ripgrep
-
-      - name: Install Package
-        run: uv pip install -e ".[dev]"
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
 
       - name: Code Quality
         run: |
-          ruff check .
-          pyright .
+          uv run ruff check .
+          uv run pyright .
 
       - name: Unit Tests
-        run: |
-          pytest .
+        run: uv run pytest .
