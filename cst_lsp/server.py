@@ -170,7 +170,7 @@ class CstLspServer(LanguageServer):
             Exceptions during transformation are silently caught to prevent
             one failing transformation from blocking others.
         """
-        document = self.workspace.get_document(params.text_document.uri)
+        document = self.workspace.get_text_document(params.text_document.uri)
         start, end = params.range.start, params.range.end
 
         code_actions = []
@@ -210,8 +210,11 @@ async def code_action(params: lsp.CodeActionParams) -> list[lsp.CodeAction] | No
 
 
 @server.feature(lsp.INITIALIZE)
-async def initialize(params: lsp.InitializeParams):
-    return await server.initialize(params)
+async def on_initialize(params: lsp.InitializeParams):
+    """Handle LSP initialize request and setup transformations."""
+    await server.initialize(params)
+    # pygls will add default capabilities, we just set up our state
+    return None  # Let pygls handle the response
 
 
 def main():

@@ -26,11 +26,37 @@ dev = [
   "pytest>=8.4.2",
   "pytest-cov>=7.0.0",
   "ruff>=0.14.2",
+  # E2E testing dependencies
+  "pytest-lsp>=0.4.0",
+  "pytest-asyncio>=0.23.0",
+  "deepdiff>=6.0.0",
+  "jsonschema>=4.0.0",
+  "pytest-benchmark>=4.0.0",
+  "pytest-timeout>=2.2.0",
+  "pytest-html>=4.0.0",
 ]
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+markers = [
+  "e2e: End-to-end LSP integration tests",
+  "slow: Tests taking >5 seconds",
+  "benchmark: Performance benchmark tests",
+  "requires_ripgrep: Tests requiring ripgrep",
+]
+addopts = [
+  "-v",
+  "--tb=short",
+  "--strict-markers",
+]
 
 [tool.ruff]
 # Assume Python 3.10
