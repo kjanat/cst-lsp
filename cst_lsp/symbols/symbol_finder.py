@@ -1,3 +1,15 @@
+"""
+Symbol finding for import resolution using ripgrep.
+
+This module provides fast symbol search across Python projects using ripgrep.
+Symbols are discovered through three tiers:
+1. Existing imports in other project files (most reliable)
+2. Symbols defined in __all__ declarations in __init__.py files
+3. Top-level class/function definitions
+
+Results are cached per session for performance.
+"""
+
 import json
 import re
 import subprocess
@@ -11,6 +23,15 @@ IMPORT_PATTERN = re.compile(r"import\s+(\w+)(?:\s+as\s+(\w+))?")
 
 @dataclass(frozen=True)
 class SuggestedImport:
+    """
+    Represents a suggested import for a symbol.
+
+    Attributes:
+        module: The module to import from (e.g., 'os.path')
+        symbol: The symbol name to import (None for 'import module' style)
+        alias: Optional alias if symbol is imported as different name
+    """
+
     module: str
     symbol: str | None
     alias: str | None
@@ -18,15 +39,49 @@ class SuggestedImport:
 
 @dataclass
 class SymbolFinder(ABC):
+    """
+    Abstract interface for finding Python symbols across project scope.
+
+    Implementations search for symbols through tiered strategies:
+    1. Existing imports in other modules (most reliable)
+    2. Symbols defined in __all__ declarations
+    3. Top-level class/function definitions
+
+    Factory method `create()` returns platform-appropriate implementation
+    (RipGrepSymbolFinder if ripgrep is available, None otherwise).
+
+    Attributes:
+        python_path: Path to Python executable for sys.path discovery
+        root: Project root directory to search
+        _paths_cache: Cached sys.path list
+    """
+
     python_path: Path
     root: Path
     _paths_cache: list[Path] | None = None
 
     @abstractmethod
     def find_symbol(self, symbol: str) -> list[SuggestedImport]:
+        """
+        Find import suggestions for a symbol.
+
+        Args:
+            symbol: Symbol name to search for
+
+        Returns:
+            List of SuggestedImport objects, ordered by relevance
+        """
         pass
 
     def paths(self) -> list[Path]:
+        """
+        Get Python sys.path directories to search.
+
+        Executes Python to discover sys.path and caches the result.
+
+        Returns:
+            List of Path objects representing directories in sys.path
+        """
         if self._paths_cache is None:
             result = subprocess.run(
                 [
@@ -45,6 +100,19 @@ class SymbolFinder(ABC):
 
     @classmethod
     def create(cls, python_path: Path, root: Path) -> "SymbolFinder | None":
+        """
+        Factory method to create a SymbolFinder implementation.
+
+        Checks if ripgrep is available and returns RipGrepSymbolFinder
+        if found, None otherwise.
+
+        Args:
+            python_path: Path to Python executable
+            root: Project root directory
+
+        Returns:
+            RipGrepSymbolFinder if ripgrep is available, None otherwise
+        """
         try:
             subprocess.run(["rg", "--version"], check=True, capture_output=True)
             return RipGrepSymbolFinder(python_path, root)
@@ -71,6 +139,21 @@ class RipGrepSymbolFinder(SymbolFinder):
     def _ripgrep_generator(
         self, pattern: str, root: Path, glob: str = "*.py", max_hits: int = 25
     ):
+        """
+        Generate ripgrep search results as (path, line) tuples.
+
+        Executes ripgrep with JSON output and yields matching lines.
+        Limits results to max_hits and avoids site-packages directories.
+
+        Args:
+            pattern: Regular expression pattern to search for
+            root: Directory to search in
+            glob: File glob pattern (default: "*.py")
+            max_hits: Maximum number of results to return (default: 25)
+
+        Yields:
+            Tuples of (file_path, matching_line)
+        """
         cmd = [
             "rg",
             "-m1",
@@ -209,6 +292,18 @@ class RipGrepSymbolFinder(SymbolFinder):
     def _find_pattern_in_files(
         self, symbol: str, pattern: str, glob: str = "*.py", use_parent: bool = False
     ) -> list[SuggestedImport]:
+        """
+        Search for a pattern across Python path and generate import suggestions.
+
+        Args:
+            symbol: Symbol name for the import suggestion
+            pattern: Regular expression to search for
+            glob: File glob pattern (default: "*.py")
+            use_parent: If True, use parent directory as module path (for __init__.py)
+
+        Returns:
+            List of SuggestedImport objects for matching files
+        """
         matches = []
         for root in self.paths():
             if not root.is_dir():
@@ -223,6 +318,21 @@ class RipGrepSymbolFinder(SymbolFinder):
         return matches
 
     def find_symbol(self, symbol: str) -> list[SuggestedImport]:
+        """
+        Find import suggestions for a symbol using three-tier search.
+
+        Search strategy (in order of reliability):
+        1. Existing imports in project (most reliable)
+        2. __all__ declarations in __init__.py
+        3. Top-level class/function definitions
+
+        Args:
+            symbol: Symbol name to search for
+
+        Returns:
+            List of SuggestedImport objects, ordered by relevance.
+            Returns first non-empty result from the search tiers.
+        """
         return (
             self.find_existing_imports(symbol)
             or self.find_symbol_from_all(symbol)

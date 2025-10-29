@@ -1,3 +1,20 @@
+"""
+CST-LSP Server: Language Server Protocol implementation for Python refactoring.
+
+This module implements the core LSP server that coordinates refactoring operations
+using libcst transformations. The server handles code action requests from LSP clients,
+applies appropriate transformations, and converts results to LSP TextEdit operations.
+
+The server lifecycle:
+1. Initialize: Sets up transformations and symbol finder based on workspace root
+2. Code Action Handler: Processes user selections and applies valid transformations
+3. Diff Conversion: Converts transformed code to LSP-compatible TextEdits
+
+Key components:
+    - CstLspServer: Main LSP server class extending pygls LanguageServer
+    - string_diff_to_text_edits: Converts string diffs to LSP TextEdit objects
+"""
+
 import difflib
 import sys
 from pathlib import Path
@@ -17,12 +34,17 @@ def string_diff_to_text_edits(original: str, modified: str) -> list[lsp.TextEdit
     """
     Convert the difference between two strings into a list of LSP TextEdit objects.
 
+    Uses difflib.SequenceMatcher to compute line-level diffs and converts them
+    to LSP TextEdit operations. Handles replace, insert, and delete operations
+    with proper LSP Range and Position coordinates.
+
     Args:
-    text1 (str): The original text.
-    text2 (str): The modified text.
+        original: The original source code text
+        modified: The transformed source code text
 
     Returns:
-    List[lsp.TextEdit]: A list of TextEdit objects representing the changes.
+        List of LSP TextEdit objects representing the changes needed to
+        transform original into modified text
     """
     original_lines = original.splitlines()
     modified_lines = modified.splitlines()
@@ -73,11 +95,41 @@ def string_diff_to_text_edits(original: str, modified: str) -> list[lsp.TextEdit
 
 
 class CstLspServer(LanguageServer):
+    """
+    LSP Server implementation for Python refactoring operations.
+
+    Coordinates code action requests with CST transformations, applying
+    libcst-based refactorings to Python source code and converting results
+    to LSP TextEdit operations for editor display.
+
+    The server maintains a list of registered transformations (Extract Method,
+    Import Symbol, etc.) and applies them to user selections when code actions
+    are requested.
+
+    Attributes:
+        transformations: List of registered code action handlers
+    """
+
     def __init__(self):
+        """Initialize the CST-LSP server with empty transformations list."""
         super().__init__("cst-lsp-server", "v0.1")
         self.transformations: list[BaseCstLspCodeAction] = []
 
     async def initialize(self, params: lsp.InitializeParams):
+        """
+        Initialize the server with transformations based on workspace configuration.
+
+        Sets up available refactoring operations. Extract Method is always available.
+        Import-related operations (ImportSymbol, ImportAll) are only enabled if
+        a SymbolFinder can be created (requires ripgrep).
+
+        Args:
+            params: LSP initialization parameters containing workspace root URI
+
+        Note:
+            If params.root_uri is not provided, only Extract Method will be available.
+            Symbol finder uses sys.executable for Python path (TODO: make configurable).
+        """
         self.transformations = [ExtractMethod()]
         if params.root_uri:
             root_path = Path(params.root_uri.replace("file://", ""))
@@ -90,6 +142,34 @@ class CstLspServer(LanguageServer):
     async def code_action_handler(
         self, params: lsp.CodeActionParams
     ) -> list[lsp.CodeAction] | None:
+        """
+        Handle code action requests from the LSP client.
+
+        Processes user selections and applies all valid transformations, converting
+        results to LSP CodeAction objects with TextEdit changes.
+
+        Workflow:
+        1. Get document from workspace
+        2. Parse with libcst
+        3. Convert LSP range to libcst CodeRange (0-indexed → 1-indexed)
+        4. For each transformation:
+           - Check if valid for selection
+           - Apply refactoring
+           - Convert result to TextEdits
+           - Create CodeAction with edits
+        5. Return all applicable code actions
+
+        Args:
+            params: Code action parameters containing document URI and selection range
+
+        Returns:
+            List of LSP CodeAction objects if any transformations apply,
+            None otherwise
+
+        Note:
+            Exceptions during transformation are silently caught to prevent
+            one failing transformation from blocking others.
+        """
         document = self.workspace.get_document(params.text_document.uri)
         start, end = params.range.start, params.range.end
 
@@ -135,6 +215,13 @@ async def initialize(params: lsp.InitializeParams):
 
 
 def main():
+    """
+    Start the CST-LSP server in stdio mode.
+
+    Entry point for the language server. Reads LSP protocol messages from
+    stdin and writes responses to stdout, following the standard LSP
+    communication model.
+    """
     server.start_io()
 
 

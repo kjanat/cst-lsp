@@ -1,3 +1,15 @@
+"""
+Import resolution code actions for undefined symbols.
+
+Provides two refactoring operations:
+1. ImportSymbol: Add import for a single undefined symbol at cursor
+2. ImportAll: Add all missing imports in current file
+
+Uses SymbolFinder to locate symbols across project scope and
+libcst's AddImportsVisitor to insert import statements. Validates
+undefined symbols using libcst's ScopeProvider metadata.
+"""
+
 import itertools
 from collections import defaultdict
 
@@ -13,6 +25,17 @@ from .base import BaseCstLspCodeAction, code_ranges_interect
 
 
 class NameAtLocationVisitor(cst.CSTVisitor):
+    """
+    Visitor to find the symbol name at a specific code location.
+
+    Uses PositionProvider metadata to match node positions against
+    the target location and extracts the symbol name if found.
+
+    Attributes:
+        target_location: Code range to search for a symbol
+        name: Symbol name found at location (None if not found)
+    """
+
     METADATA_DEPENDENCIES = (PositionProvider,)
 
     def __init__(self, target_location: CodeRange):
@@ -27,6 +50,16 @@ class NameAtLocationVisitor(cst.CSTVisitor):
 
 
 def get_name_at_location(module: cst.Module, location: CodeRange) -> str | None:
+    """
+    Extract the symbol name at a specific code location.
+
+    Args:
+        module: Parsed libcst module
+        location: Code range to search
+
+    Returns:
+        Symbol name at the location, or None if no symbol found
+    """
     wrapper = MetadataWrapper(module)
     visitor = NameAtLocationVisitor(location)
     wrapper.visit(visitor)
@@ -34,6 +67,17 @@ def get_name_at_location(module: cst.Module, location: CodeRange) -> str | None:
 
 
 class ImportSymbol(BaseCstLspCodeAction):
+    """
+    Code action to import a single undefined symbol.
+
+    Analyzes the symbol at the cursor position, searches for it across
+    the project using SymbolFinder, and adds the appropriate import
+    statement using libcst's AddImportsVisitor.
+
+    Attributes:
+        symbol_finder: SymbolFinder instance for locating symbols
+    """
+
     name = "Import Symbol"
     kind = lsp_types.CodeActionKind.RefactorExtract
 
@@ -42,6 +86,20 @@ class ImportSymbol(BaseCstLspCodeAction):
         self.symbol_finder = symbol_finder
 
     def undefined_symbols(self, module: cst.Module, code_range: CodeRange):
+        """
+        Find all undefined symbols in the module.
+
+        Uses libcst's ScopeProvider to identify symbols that are accessed
+        but have no referents (i.e., not defined in any scope).
+
+        Args:
+            module: Parsed libcst module
+            code_range: Code range to analyze (currently unused, analyzes whole module)
+
+        Returns:
+            Dict mapping symbol names to sets of CodeRange locations where
+            they are used but undefined
+        """
         wrapper = MetadataWrapper(module)
         scopes = set(wrapper.resolve(ScopeProvider).values())
         ranges = wrapper.resolve(PositionProvider)
@@ -77,6 +135,19 @@ class ImportSymbol(BaseCstLspCodeAction):
         return False
 
     def import_symbol(self, context: CodemodContext, symbol: str) -> str | None:
+        """
+        Add import for a symbol using SymbolFinder.
+
+        Searches for the symbol across the project and adds the first
+        matching import to the codemod context.
+
+        Args:
+            context: CodemodContext to accumulate imports
+            symbol: Symbol name to import
+
+        Returns:
+            None (import is added to context)
+        """
         matching_imports = self.symbol_finder.find_symbol(symbol)
         if not matching_imports:
             return None
@@ -94,6 +165,20 @@ class ImportSymbol(BaseCstLspCodeAction):
         module: cst.Module,
         code_range: CodeRange,
     ) -> str | None:
+        """
+        Add import statement for the symbol at cursor.
+
+        Finds the symbol name at the selected location, searches for it,
+        and adds the appropriate import statement.
+
+        Args:
+            module: Parsed libcst module
+            code_range: Selected code range (typically cursor position)
+
+        Returns:
+            Transformed source code with added import, or original code
+            if symbol not found
+        """
         symbol = get_name_at_location(module, code_range)
         if symbol is None:
             return module.code
@@ -105,6 +190,16 @@ class ImportSymbol(BaseCstLspCodeAction):
 
 
 class ImportAll(ImportSymbol):
+    """
+    Code action to import all undefined symbols in the file.
+
+    Extends ImportSymbol to handle multiple undefined symbols at once.
+    Only offered when there are 2+ undefined symbols in the file.
+
+    Inherits:
+        symbol_finder: SymbolFinder instance from ImportSymbol
+    """
+
     name = "Import All Missing"
     kind = lsp_types.CodeActionKind.RefactorExtract
 
@@ -117,7 +212,16 @@ class ImportAll(ImportSymbol):
         """
         Check if the refactor is valid for the given code range.
 
-        If this module is missing more than one import, offer this fixer.
+        Valid when the module has more than one undefined symbol, making
+        bulk import more useful than single symbol import.
+
+        Args:
+            source: Full source code text
+            module: Parsed libcst module
+            code_range: Code range (unused, analyzes whole module)
+
+        Returns:
+            True if 2+ undefined symbols exist, False otherwise
         """
         return len(self.undefined_symbols(module, code_range)) > 1
 
@@ -126,6 +230,19 @@ class ImportAll(ImportSymbol):
         module: cst.Module,
         code_range: CodeRange,
     ) -> str | None:
+        """
+        Add import statements for all undefined symbols.
+
+        Finds all undefined symbols in the module, searches for each,
+        and adds all import statements in a single transformation.
+
+        Args:
+            module: Parsed libcst module
+            code_range: Code range (unused, analyzes whole module)
+
+        Returns:
+            Transformed source code with all imports added
+        """
         context = CodemodContext()
         undefined_symbols = self.undefined_symbols(module, code_range)
         wrapper = cst.MetadataWrapper(module)
