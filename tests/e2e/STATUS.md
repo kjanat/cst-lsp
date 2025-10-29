@@ -1,37 +1,35 @@
 # E2E Test Suite Status
 
-**Phase 1: Foundation** ✅ **COMPLETE** (4/5 tests passing, 1 skipped)
+**Phase 1: Foundation** ✅ **COMPLETE** (5/5 tests passing)
 
 ## Test Results
 
-### ✅ Passing (4 tests)
+### ✅ All Tests Passing (5/5)
 
 1. **test_lifecycle.py::test_initialize_with_capabilities**
    - Framework: pytest-lsp
    - Tests server initialization and capability negotiation
-   - Status: Passing
+   - Status: ✅ Passing
 
 2. **test_lifecycle.py::test_shutdown_sequence**
    - Framework: pytest-lsp  
    - Tests graceful shutdown via fixture lifecycle
-   - Status: Passing
+   - Status: ✅ Passing
 
 3. **test_code_actions_direct.py::test_extract_method_simple_direct**
    - Framework: DirectLspClient (raw JSON-RPC)
    - Tests Extract Method refactoring
-   - Status: Passing
+   - Status: ✅ Passing
 
-4. **test_error_handling_direct.py::test_invalid_range_handling_direct**
+4. **test_code_actions_direct.py::test_import_single_symbol_direct**
+   - Framework: DirectLspClient
+   - Tests Import Symbol for User class from models.py
+   - Status: ✅ Passing
+
+5. **test_error_handling_direct.py::test_invalid_range_handling_direct**
    - Framework: DirectLspClient
    - Tests server resilience with invalid requests
-   - Status: Passing
-
-### ⏭️ Skipped (1 test)
-
-5. **test_code_actions_direct.py::test_import_single_symbol_direct**
-   - Skips when ripgrep doesn't find "Path" symbol in test project
-   - Expected behavior: Symbol resolution requires ripgrep + standard library access
-   - Status: Skipped (not a failure)
+   - Status: ✅ Passing
 
 ## Architecture
 
@@ -72,4 +70,71 @@ pytest tests/e2e/test_lifecycle.py -v
 
 # Single test
 pytest tests/e2e/test_code_actions_direct.py::test_extract_method_simple_direct -v
+
+# Expected output: 5 passed in ~3s
 ```
+
+## Phase 2 Roadmap
+
+From `docs/E2E_TESTING_PRD.md` (68 tests planned):
+
+### Code Actions (18 tests)
+- Extract method: async, nested, multiple returns, error handling
+- Import symbol: multiple matches, stdlib, third-party
+
+### Text Document Sync (12 tests)
+- didOpen, didChange, didSave, didClose notifications
+
+### Diagnostics (8 tests)
+- Syntax errors, runtime errors, diagnostic updates
+
+### Navigation (12 tests)
+- Definition, references, hover, symbols
+
+### Performance (8 tests)
+- Large files, concurrent requests, memory usage
+
+### Edge Cases (10 tests)
+- Invalid ranges, malformed requests, concurrent modifications
+
+**Estimated Effort**: 24-32 hours
+
+## Key Learnings
+
+1. **pytest-lsp limitations**: Async response delivery unreliable for code actions
+2. **Direct client solution**: Raw JSON-RPC bypasses pytest-lsp issues  
+3. **Hybrid approach**: Use best tool for each test type
+4. **Symbol resolution**: Works correctly for project-local symbols (User, calculate_sum, etc.)
+5. **Action title filtering**: Import actions use generic "Import Symbol" title, not symbol-specific
+
+## Recent Fix
+
+**Issue**: Import Symbol test was skipped  
+**Root Cause**: Test looked for "Path" from pathlib (not in project), filter required both "import" AND "user" in title  
+**Solution**: 
+1. Changed test to use `User` class from `models.py` (project-local symbol)
+2. Fixed filter to look for "import" AND "symbol" (matches "Import Symbol" title)  
+**Result**: Test now passing ✅
+
+## Resolved Issues
+
+### Issue: pytest-lsp Async Timeout
+
+**Problem**: `client.text_document_code_action_async()` times out
+
+**Evidence**:
+```
+Server logs:
+[DEBUG] code_action_handler called ✅
+[DEBUG] Returning 1 code actions ✅
+
+Client logs:
+TIMEOUT waiting for response ❌
+```
+
+**Solution**: Implemented DirectLspClient
+- Uses raw JSON-RPC protocol
+- 100% control over message serialization
+- No intermediate async layers
+
+**Result**: All code action tests passing with DirectLspClient

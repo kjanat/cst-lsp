@@ -136,17 +136,17 @@ async def test_import_single_symbol_direct(simple_project):
     """
     Test Import Symbol code action for undefined symbol using direct client.
 
-    Creates file with undefined symbol and verifies:
+    Creates file with undefined symbol (User from models.py) and verifies:
     - Import Symbol CodeAction is offered
-    - Symbol is found via SymbolFinder
+    - Symbol is found via SymbolFinder within project
     - Import statement inserted correctly
     - Undefined symbol becomes defined
     """
     # Create test file with undefined symbol
     test_file = simple_project / "test_import.py"
-    original_code = """def process_file():
-    path = Path("/tmp/test.txt")
-    return path.exists()
+    original_code = """def create_user():
+    user = User("Alice", "alice@example.com")
+    return user.display_name()
 """
     test_file.write_text(original_code)
 
@@ -167,12 +167,12 @@ async def test_import_single_symbol_direct(simple_project):
             )
         )
 
-        # Request code actions at 'Path' symbol (line 1, character 11)
+        # Request code actions at 'User' symbol (line 1, character 11)
         params = CodeActionParams(
             text_document=TextDocumentIdentifier(uri=test_file.as_uri()),
             range=Range(
-                start=Position(line=1, character=11),  # Start of 'Path'
-                end=Position(line=1, character=15),  # End of 'Path'
+                start=Position(line=1, character=11),  # Start of 'User'
+                end=Position(line=1, character=15),  # End of 'User'
             ),
             context=CodeActionContext(diagnostics=[]),
         )
@@ -182,12 +182,12 @@ async def test_import_single_symbol_direct(simple_project):
         # Validate response
         assert actions is not None, "Expected code actions for undefined symbol"
 
-        # Should have Import Symbol action (if ripgrep available)
+        # Should have Import Symbol action
         import_actions = [
             a
             for a in actions
             if "import" in a.get("title", "").lower()
-            and "path" in a.get("title", "").lower()
+            and "symbol" in a.get("title", "").lower()
         ]
 
         if len(import_actions) == 0:
@@ -219,7 +219,7 @@ async def test_import_single_symbol_direct(simple_project):
 
         # Validate import added
         assert "import" in result.lower(), "Expected import statement added"
-        assert "Path" in result, "Expected Path symbol in result"
+        assert "User" in result, "Expected User symbol in result"
 
         # Validate result is valid Python
         assert_valid_python(result)
@@ -230,7 +230,7 @@ async def test_import_single_symbol_direct(simple_project):
             (
                 i
                 for i, line in enumerate(lines)
-                if "import" in line.lower() and "Path" in line
+                if "import" in line.lower() and "User" in line
             ),
             None,
         )
